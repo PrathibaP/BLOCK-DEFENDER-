@@ -1,0 +1,1778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Block-Defender · AI Security Operations Center</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=JetBrains+Mono:wght@300;400;500;600&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+:root {
+  --bg-deep: #050c18;
+  --bg-panel: #0a1628;
+  --bg-card: #0d1f35;
+  --bg-hover: #112440;
+  --accent: #00d4ff;
+  --accent2: #22c55e;
+  --accent3: #a855f7;
+  --threat: #ef4444;
+  --warn: #f59e0b;
+  --safe: #10b981;
+  --border: rgba(0,212,255,0.15);
+  --border2: rgba(0,212,255,0.08);
+  --text: #e2e8f0;
+  --text-dim: #64748b;
+  --text-bright: #f0f9ff;
+  --glow: 0 0 20px rgba(0,212,255,0.3);
+  --glow-threat: 0 0 20px rgba(239,68,68,0.4);
+  --glow-safe: 0 0 20px rgba(16,185,129,0.3);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--bg-deep);
+  color: var(--text);
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--bg-deep); }
+::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 2px; }
+
+/* ── LAYOUT ── */
+.app { display: flex; min-height: 100vh; }
+
+/* ── SIDEBAR ── */
+.sidebar {
+  width: 240px;
+  min-height: 100vh;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0; left: 0;
+  z-index: 100;
+  transition: width 0.3s;
+}
+.sidebar-logo {
+  padding: 20px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.logo-badge {
+  display: flex; align-items: center; gap: 10px;
+}
+.logo-icon {
+  width: 36px; height: 36px;
+  background: linear-gradient(135deg, var(--accent), var(--accent3));
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  box-shadow: var(--glow);
+  flex-shrink: 0;
+}
+.logo-text { font-family: 'Orbitron', sans-serif; font-size: 13px; font-weight: 700; color: var(--text-bright); line-height: 1.2; }
+.logo-sub { font-size: 9px; color: var(--accent); letter-spacing: 2px; text-transform: uppercase; }
+
+.threat-level-bar {
+  margin: 12px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+.tl-label { font-size: 9px; color: var(--text-dim); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; }
+.tl-value { font-family: 'Orbitron', sans-serif; font-size: 13px; color: var(--warn); font-weight: 700; }
+.tl-bar { height: 3px; background: var(--bg-deep); border-radius: 2px; margin-top: 6px; }
+.tl-fill { height: 100%; width: 68%; background: linear-gradient(90deg, var(--safe), var(--warn)); border-radius: 2px; animation: pulse-width 3s ease-in-out infinite alternate; }
+@keyframes pulse-width { to { width: 72%; } }
+
+.nav-section { margin-top: 8px; }
+.nav-label { font-size: 9px; color: var(--text-dim); letter-spacing: 3px; text-transform: uppercase; padding: 8px 16px 4px; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 16px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: all 0.2s;
+  font-size: 12px;
+  color: var(--text-dim);
+  position: relative;
+}
+.nav-item:hover, .nav-item.active {
+  background: var(--bg-hover);
+  border-left-color: var(--accent);
+  color: var(--accent);
+}
+.nav-item .nav-icon { font-size: 14px; width: 18px; text-align: center; }
+.nav-badge {
+  margin-left: auto;
+  background: var(--threat);
+  color: white;
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700;
+  animation: badge-pulse 2s ease-in-out infinite;
+}
+@keyframes badge-pulse { 50% { opacity: 0.6; } }
+
+.sidebar-footer {
+  margin-top: auto;
+  padding: 16px;
+  border-top: 1px solid var(--border);
+}
+.sys-status { font-size: 9px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--safe); animation: dot-blink 2s ease-in-out infinite; }
+@keyframes dot-blink { 50% { opacity: 0.3; } }
+
+/* ── MAIN CONTENT ── */
+.main { margin-left: 240px; flex: 1; display: flex; flex-direction: column; }
+
+/* ── TOPBAR ── */
+.topbar {
+  height: 56px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center;
+  padding: 0 24px;
+  gap: 16px;
+  position: sticky; top: 0; z-index: 90;
+}
+.topbar-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 13px;
+  color: var(--text-bright);
+  letter-spacing: 1px;
+}
+.topbar-breadcrumb { font-size: 11px; color: var(--text-dim); }
+
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.live-badge {
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(16,185,129,0.1);
+  border: 1px solid rgba(16,185,129,0.3);
+  color: var(--safe);
+  font-size: 10px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  letter-spacing: 1px;
+}
+.live-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--safe); animation: dot-blink 1s ease-in-out infinite; }
+.time-display { font-family: 'Orbitron', sans-serif; font-size: 11px; color: var(--accent); }
+.topbar-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+  transition: all 0.2s;
+}
+.topbar-btn:hover { border-color: var(--accent); color: var(--accent); }
+.upload-btn {
+  background: linear-gradient(135deg, rgba(0,212,255,0.15), rgba(168,85,247,0.15));
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── PAGE CONTENT ── */
+.page { display: none; padding: 24px; animation: fadeIn 0.3s ease; }
+.page.active { display: block; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ── SECTION HEADER ── */
+.section-header { margin-bottom: 24px; }
+.section-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-bright);
+  display: flex; align-items: center; gap: 12px;
+}
+.section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--accent), transparent);
+  margin-left: 8px;
+}
+.section-sub { font-size: 11px; color: var(--text-dim); margin-top: 6px; letter-spacing: 1px; }
+
+/* ── STAT CARDS ── */
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  padding: 16px 20px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.3s;
+}
+.stat-card:hover { border-color: var(--border); }
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--card-accent, var(--accent)), transparent);
+}
+.stat-card.threat { --card-accent: var(--threat); }
+.stat-card.warn { --card-accent: var(--warn); }
+.stat-card.safe { --card-accent: var(--safe); }
+.stat-card.purple { --card-accent: var(--accent3); }
+.stat-label { font-size: 9px; color: var(--text-dim); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; }
+.stat-value { font-family: 'Orbitron', sans-serif; font-size: 28px; font-weight: 700; color: var(--text-bright); line-height: 1; }
+.stat-unit { font-size: 12px; color: var(--text-dim); margin-left: 4px; }
+.stat-delta { font-size: 10px; margin-top: 6px; display: flex; align-items: center; gap: 4px; }
+.delta-up { color: var(--threat); }
+.delta-down { color: var(--safe); }
+.stat-sparkline { position: absolute; bottom: 0; right: 0; opacity: 0.15; }
+
+/* ── GRID LAYOUTS ── */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.grid-60-40 { display: grid; grid-template-columns: 60fr 40fr; gap: 16px; margin-bottom: 16px; }
+.grid-70-30 { display: grid; grid-template-columns: 70fr 30fr; gap: 16px; margin-bottom: 16px; }
+
+/* ── PANEL ── */
+.panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.panel-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border2);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.panel-title { font-family: 'Rajdhani', sans-serif; font-size: 13px; font-weight: 600; color: var(--text-bright); letter-spacing: 1px; text-transform: uppercase; display: flex; align-items: center; gap: 8px; }
+.panel-title .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.panel-actions { display: flex; gap: 8px; }
+.panel-btn { font-size: 9px; color: var(--text-dim); border: 1px solid var(--border2); padding: 3px 8px; border-radius: 4px; cursor: pointer; background: transparent; font-family: 'JetBrains Mono', monospace; transition: all 0.2s; }
+.panel-btn:hover { color: var(--accent); border-color: var(--accent); }
+.panel-body { padding: 18px; }
+
+/* ── NETWORK MAP ── */
+#network-canvas { width: 100%; height: 280px; }
+
+/* ── ALERT FEED ── */
+.alert-feed { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; }
+.alert-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--bg-panel);
+  border-left: 3px solid;
+  font-size: 10px;
+  animation: slideIn 0.3s ease;
+}
+@keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } }
+.alert-item.critical { border-color: var(--threat); }
+.alert-item.warning { border-color: var(--warn); }
+.alert-item.info { border-color: var(--accent); }
+.alert-item.safe { border-color: var(--safe); }
+.alert-type { font-family: 'Orbitron', sans-serif; font-size: 8px; font-weight: 600; padding: 1px 6px; border-radius: 3px; white-space: nowrap; }
+.alert-item.critical .alert-type { background: rgba(239,68,68,0.2); color: var(--threat); }
+.alert-item.warning .alert-type { background: rgba(245,158,11,0.2); color: var(--warn); }
+.alert-item.info .alert-type { background: rgba(0,212,255,0.2); color: var(--accent); }
+.alert-item.safe .alert-type { background: rgba(16,185,129,0.2); color: var(--safe); }
+.alert-msg { color: var(--text); flex: 1; line-height: 1.4; }
+.alert-time { color: var(--text-dim); font-size: 9px; white-space: nowrap; }
+
+/* ── PIPELINE ── */
+.pipeline-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.module-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 14px;
+  cursor: pointer;
+  transition: all 0.25s;
+  position: relative;
+  overflow: hidden;
+}
+.module-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: var(--glow);
+}
+.module-card.active { border-color: var(--accent); background: rgba(0,212,255,0.05); }
+.module-num { font-family: 'Orbitron', sans-serif; font-size: 10px; color: var(--accent); margin-bottom: 6px; }
+.module-name { font-family: 'Rajdhani', sans-serif; font-size: 13px; font-weight: 600; color: var(--text-bright); margin-bottom: 4px; }
+.module-tech { font-size: 9px; color: var(--text-dim); line-height: 1.6; }
+.module-status { position: absolute; top: 10px; right: 10px; width: 8px; height: 8px; border-radius: 50%; background: var(--safe); animation: dot-blink 2s ease-in-out infinite; }
+.module-icon { font-size: 22px; margin-bottom: 8px; }
+
+.module-detail {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  margin-top: 16px;
+  display: none;
+  animation: fadeIn 0.3s ease;
+}
+.module-detail.active { display: block; }
+.detail-title { font-family: 'Orbitron', sans-serif; font-size: 14px; color: var(--accent); margin-bottom: 12px; }
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.detail-section label { font-size: 9px; color: var(--text-dim); letter-spacing: 2px; text-transform: uppercase; display: block; margin-bottom: 6px; }
+.detail-section .tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag { font-size: 9px; padding: 2px 8px; border-radius: 10px; background: rgba(0,212,255,0.1); border: 1px solid rgba(0,212,255,0.2); color: var(--accent); }
+.tag.purple { background: rgba(168,85,247,0.1); border-color: rgba(168,85,247,0.3); color: var(--accent3); }
+.tag.green { background: rgba(16,185,129,0.1); border-color: rgba(16,185,129,0.3); color: var(--safe); }
+
+/* ── PERFORMANCE METRICS ── */
+.metric-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border2); }
+.metric-row:last-child { border-bottom: none; }
+.metric-name { font-size: 11px; color: var(--text-dim); width: 120px; }
+.metric-bar-wrap { flex: 1; height: 6px; background: var(--bg-deep); border-radius: 3px; overflow: hidden; }
+.metric-bar { height: 100%; border-radius: 3px; transition: width 1s ease; }
+.metric-val { font-family: 'Orbitron', sans-serif; font-size: 11px; color: var(--text-bright); width: 50px; text-align: right; }
+
+/* ── BLOCKCHAIN ── */
+.blockchain-flow { display: flex; align-items: center; gap: 0; overflow-x: auto; padding-bottom: 12px; }
+.block-node {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  min-width: 160px;
+  font-size: 10px;
+  flex-shrink: 0;
+  position: relative;
+}
+.block-node::after {
+  content: '→';
+  position: absolute;
+  right: -18px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--accent);
+  font-size: 14px;
+}
+.block-node:last-child::after { display: none; }
+.block-arrow { width: 36px; color: var(--accent); text-align: center; flex-shrink: 0; }
+.block-id { font-family: 'Orbitron', sans-serif; font-size: 9px; color: var(--accent); margin-bottom: 4px; }
+.block-hash { font-size: 8px; color: var(--text-dim); word-break: break-all; margin-bottom: 6px; }
+.block-type { font-size: 9px; padding: 2px 6px; border-radius: 3px; display: inline-block; }
+.block-type.atk { background: rgba(239,68,68,0.2); color: var(--threat); }
+.block-type.resp { background: rgba(0,212,255,0.2); color: var(--accent); }
+.block-type.ok { background: rgba(16,185,129,0.2); color: var(--safe); }
+
+/* ── TOPOLOGY ── */
+#topology-svg { width: 100%; height: 400px; }
+
+/* ── AUTHOR ── */
+.author-card {
+  background: linear-gradient(135deg, var(--bg-card), rgba(168,85,247,0.05));
+  border: 1px solid rgba(168,85,247,0.3);
+  border-radius: 12px;
+  padding: 28px;
+  display: flex; gap: 24px; align-items: flex-start;
+}
+.author-avatar {
+  width: 80px; height: 80px;
+  background: linear-gradient(135deg, var(--accent), var(--accent3));
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 32px;
+  flex-shrink: 0;
+  box-shadow: 0 0 30px rgba(168,85,247,0.4);
+}
+.author-name { font-family: 'Orbitron', sans-serif; font-size: 20px; color: var(--text-bright); margin-bottom: 4px; }
+.author-title { font-family: 'Rajdhani', sans-serif; font-size: 14px; color: var(--accent); letter-spacing: 1px; }
+.author-inst { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+.author-links { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+.author-link {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 11px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+.author-link:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── CHARTS ── */
+canvas { max-width: 100%; }
+.chart-wrap { position: relative; }
+
+/* ── RISK GAUGE ── */
+.gauge-wrap { display: flex; flex-direction: column; align-items: center; padding: 16px; }
+#gauge-canvas { max-width: 220px; }
+.gauge-val { font-family: 'Orbitron', sans-serif; font-size: 32px; color: var(--warn); text-align: center; margin-top: -20px; }
+.gauge-label { font-size: 10px; color: var(--text-dim); text-align: center; letter-spacing: 2px; margin-top: 4px; }
+
+/* ── UPLOAD ZONE ── */
+.upload-zone {
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  padding: 32px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+.upload-zone:hover { border-color: var(--accent); background: rgba(0,212,255,0.02); }
+.upload-icon { font-size: 36px; margin-bottom: 12px; opacity: 0.5; }
+.upload-text { font-size: 12px; color: var(--text-dim); }
+.upload-text strong { color: var(--accent); display: block; font-size: 14px; margin-bottom: 4px; }
+
+/* ── TABLE ── */
+.data-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.data-table th { padding: 8px 12px; text-align: left; font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--text-dim); border-bottom: 1px solid var(--border); background: var(--bg-panel); }
+.data-table td { padding: 9px 12px; border-bottom: 1px solid var(--border2); color: var(--text); }
+.data-table tr:hover td { background: var(--bg-hover); }
+.severity-badge { font-size: 9px; padding: 2px 8px; border-radius: 3px; font-weight: 600; }
+.sev-critical { background: rgba(239,68,68,0.2); color: var(--threat); }
+.sev-high { background: rgba(245,158,11,0.2); color: var(--warn); }
+.sev-medium { background: rgba(0,212,255,0.2); color: var(--accent); }
+.sev-low { background: rgba(16,185,129,0.2); color: var(--safe); }
+
+/* ── CONTACT ── */
+.contact-form { display: flex; flex-direction: column; gap: 14px; max-width: 560px; }
+.form-group label { font-size: 10px; color: var(--text-dim); display: block; margin-bottom: 6px; letter-spacing: 1px; text-transform: uppercase; }
+.form-input {
+  width: 100%;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  transition: border-color 0.2s;
+}
+.form-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(0,212,255,0.1); }
+textarea.form-input { min-height: 100px; resize: vertical; }
+.submit-btn {
+  background: linear-gradient(135deg, var(--accent), var(--accent3));
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 6px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.submit-btn:hover { opacity: 0.9; }
+
+/* ── IPS WORKFLOW ── */
+.ips-flow { display: flex; flex-direction: column; gap: 0; }
+.flow-step {
+  display: flex; align-items: flex-start; gap: 16px;
+  padding: 12px 0;
+  position: relative;
+}
+.flow-step::before {
+  content: '';
+  position: absolute;
+  left: 19px;
+  top: 40px;
+  bottom: -12px;
+  width: 2px;
+  background: linear-gradient(180deg, var(--accent), transparent);
+}
+.flow-step:last-child::before { display: none; }
+.flow-dot {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: var(--bg-panel);
+  border: 2px solid var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+  box-shadow: var(--glow);
+}
+.flow-info { flex: 1; }
+.flow-name { font-family: 'Rajdhani', sans-serif; font-size: 14px; font-weight: 600; color: var(--text-bright); }
+.flow-desc { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+.flow-badge { font-size: 9px; padding: 2px 8px; border-radius: 10px; display: inline-block; margin-top: 6px; }
+
+/* ── DOWNLOAD CARDS ── */
+.download-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.dl-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 18px;
+  cursor: pointer;
+  transition: all 0.25s;
+  text-align: center;
+}
+.dl-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--glow); }
+.dl-icon { font-size: 32px; margin-bottom: 10px; }
+.dl-name { font-family: 'Rajdhani', sans-serif; font-size: 13px; font-weight: 600; color: var(--text-bright); margin-bottom: 4px; }
+.dl-desc { font-size: 10px; color: var(--text-dim); }
+.dl-btn { margin-top: 12px; background: rgba(0,212,255,0.1); border: 1px solid rgba(0,212,255,0.3); color: var(--accent); font-size: 10px; padding: 5px 16px; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; display: inline-block; }
+
+/* ── GLITCH EFFECT ── */
+@keyframes glitch {
+  0%, 100% { text-shadow: none; }
+  25% { text-shadow: 2px 0 var(--threat), -2px 0 var(--accent); }
+  50% { text-shadow: -2px 0 var(--threat), 2px 0 var(--accent); }
+  75% { text-shadow: 0 2px var(--accent3), 0 -2px var(--accent); }
+}
+
+/* ── ANIMATED RING ── */
+.threat-ring {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 80px; height: 80px;
+  border-radius: 50%;
+  border: 2px solid var(--warn);
+  position: relative;
+}
+.threat-ring::before {
+  content: '';
+  position: absolute;
+  width: 90px; height: 90px;
+  border-radius: 50%;
+  border: 1px solid rgba(245,158,11,0.3);
+  animation: ring-expand 2s ease-in-out infinite;
+}
+@keyframes ring-expand { to { transform: scale(1.3); opacity: 0; } }
+
+/* ── TOOLTIP ── */
+.tooltip { position: relative; }
+.tooltip:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 10px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  white-space: nowrap;
+  z-index: 999;
+}
+
+/* ── SCROLLABLE PANEL ── */
+.scroll-panel { overflow-y: auto; max-height: 300px; }
+
+/* ── MINI CHART CONTAINER ── */
+.mini-chart { height: 60px; position: relative; }
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ══ SIDEBAR ══ -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-badge">
+      <div class="logo-icon">🛡</div>
+      <div>
+        <div class="logo-text">BLOCK-DEFENDER</div>
+        <div class="logo-sub">SOC Platform v2.0</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="threat-level-bar">
+    <div class="tl-label">Threat Level</div>
+    <div class="tl-value">ELEVATED · 68%</div>
+    <div class="tl-bar"><div class="tl-fill"></div></div>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-label">Operations</div>
+    <div class="nav-item active" onclick="showPage('dashboard')">
+      <span class="nav-icon">📊</span> SOC Dashboard
+      <span class="nav-badge">3</span>
+    </div>
+    <div class="nav-item" onclick="showPage('analytics')">
+      <span class="nav-icon">📡</span> Network Analytics
+    </div>
+    <div class="nav-item" onclick="showPage('topology')">
+      <span class="nav-icon">🌐</span> Topology Map
+    </div>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-label">AI Engine</div>
+    <div class="nav-item" onclick="showPage('pipeline')">
+      <span class="nav-icon">⚙️</span> AI Pipeline
+    </div>
+    <div class="nav-item" onclick="showPage('idsips')">
+      <span class="nav-icon">🤖</span> IDS-IPS Engine
+    </div>
+    <div class="nav-item" onclick="showPage('performance')">
+      <span class="nav-icon">📈</span> Performance
+    </div>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-label">Forensics</div>
+    <div class="nav-item" onclick="showPage('blockchain')">
+      <span class="nav-icon">🔗</span> Blockchain Logs
+    </div>
+    <div class="nav-item" onclick="showPage('incidents')">
+      <span class="nav-icon">🚨</span> Incident Table
+      <span class="nav-badge">7</span>
+    </div>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-label">Research</div>
+    <div class="nav-item" onclick="showPage('downloads')">
+      <span class="nav-icon">📁</span> Downloads
+    </div>
+    <div class="nav-item" onclick="showPage('about')">
+      <span class="nav-icon">👤</span> Author Profile
+    </div>
+    <div class="nav-item" onclick="showPage('contact')">
+      <span class="nav-icon">✉️</span> Contact
+    </div>
+  </div>
+
+  <div class="sidebar-footer">
+    <div class="sys-status">
+      <div class="status-dot"></div>
+      System Operational · TII-SSRC Active
+    </div>
+  </div>
+</nav>
+
+<!-- ══ MAIN ══ -->
+<div class="main">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <span class="topbar-title">BLOCK-DEFENDER</span>
+    <span class="topbar-breadcrumb">/ Security Operations Center</span>
+    <div class="topbar-right">
+      <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+      <div class="time-display" id="clock">--:--:--</div>
+      <button class="topbar-btn upload-btn" onclick="showPage('analytics')">⬆ Upload Dataset</button>
+      <button class="topbar-btn">🔔 Alerts (3)</button>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════ -->
+  <!-- PAGE: DASHBOARD                   -->
+  <!-- ══════════════════════════════════ -->
+  <div class="page active" id="page-dashboard">
+    <div class="section-header">
+      <div class="section-title">📊 Security Operations Center</div>
+      <div class="section-sub">Block-Defender · Real-Time SDN Threat Intelligence · TII-SSRC Dataset</div>
+    </div>
+
+    <!-- STAT CARDS -->
+    <div class="stats-grid">
+      <div class="stat-card threat">
+        <div class="stat-label">Active Threats</div>
+        <div class="stat-value" id="stat-threats">247<span class="stat-unit">flows</span></div>
+        <div class="stat-delta delta-up">▲ 18% from last hour</div>
+      </div>
+      <div class="stat-card safe">
+        <div class="stat-label">Detection Accuracy</div>
+        <div class="stat-value">99.4<span class="stat-unit">%</span></div>
+        <div class="stat-delta delta-down">▲ Improved +0.2%</div>
+      </div>
+      <div class="stat-card warn">
+        <div class="stat-label">Flows Analyzed</div>
+        <div class="stat-value" id="stat-flows">1.2<span class="stat-unit">M</span></div>
+        <div class="stat-delta">Last 24h period</div>
+      </div>
+      <div class="stat-card purple">
+        <div class="stat-label">IPS Mitigations</div>
+        <div class="stat-value">89<span class="stat-unit">auto</span></div>
+        <div class="stat-delta delta-down">▼ 4 manual escalations</div>
+      </div>
+    </div>
+
+    <!-- CHARTS ROW 1 -->
+    <div class="grid-60-40" style="margin-bottom:16px">
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title"><div class="dot"></div>Network Traffic Timeline</div>
+          <div class="panel-actions">
+            <button class="panel-btn">1H</button>
+            <button class="panel-btn">6H</button>
+            <button class="panel-btn" style="border-color:var(--accent);color:var(--accent)">24H</button>
+          </div>
+        </div>
+        <div class="panel-body" style="padding:12px">
+          <canvas id="trafficChart" height="120"></canvas>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title"><div class="dot" style="background:var(--threat)"></div>Attack Distribution</div>
+        </div>
+        <div class="panel-body" style="padding:12px">
+          <canvas id="attackChart" height="120"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- CHARTS ROW 2 -->
+    <div class="grid-70-30" style="margin-bottom:16px">
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title"><div class="dot" style="background:var(--warn)"></div>Anomaly Detection Feed</div>
+        </div>
+        <div class="panel-body" style="padding:12px">
+          <canvas id="anomalyChart" height="100"></canvas>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title"><div class="dot" style="background:var(--accent3)"></div>Risk Gauge</div>
+        </div>
+        <div class="gauge-wrap">
+          <canvas id="gaugeChart" height="140" width="220"></canvas>
+          <div class="gauge-val">68%</div>
+          <div class="gauge-label">OVERALL RISK SCORE</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ALERT FEED + NETWORK SCAN -->
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title"><div class="dot" style="background:var(--threat)"></div>Live Alert Stream</div>
+          <div class="panel-actions"><button class="panel-btn" onclick="clearAlerts()">Clear</button></div>
+        </div>
+        <div class="panel-body" style="padding:10px">
+          <div class="alert-feed" id="alert-feed"></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title"><div class="dot"></div>SDN Flow Heatmap</div>
+        </div>
+        <div class="panel-body" style="padding:12px">
+          <canvas id="heatmapChart" height="180"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════ -->
+  <!-- PAGE: ANALYTICS                   -->
+  <!-- ══════════════════════════════════ -->
+  <div class="page" id="page-analytics">
+    <div class="section-header">
+      <div class="section-title">📡 Network Data Analytics</div>
+      <div class="section-sub">Upload PCAP / CSV / JSON · AI-powered analysis</div>
+    </div>
+    <div class="upload-zone" onclick="simulateUpload()">
+      <div class="upload-icon">📂</div>
+      <div class="upload-text">
+        <strong>Drop Network Dataset Here</strong>
+        CSV Flow Data · PCAP Files · JSON Logs
+      </div>
+    </div>
+    <div id="upload-result" style="display:none; margin-top:20px">
+      <div class="stats-grid">
+        <div class="stat-card safe"><div class="stat-label">Total Flows</div><div class="stat-value">48,291</div></div>
+        <div class="stat-card threat"><div class="stat-label">Malicious</div><div class="stat-value">3,847</div></div>
+        <div class="stat-card warn"><div class="stat-label">Anomalous</div><div class="stat-value">1,204</div></div>
+        <div class="stat-card purple"><div class="stat-label">Risk Score</div><div class="stat-value">7.4<span class="stat-unit">/10</span></div></div>
+      </div>
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-header"><div class="panel-title"><div class="dot"></div>Entropy Distribution</div></div>
+          <div class="panel-body" style="padding:12px"><canvas id="entropyChart" height="140"></canvas></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><div class="panel-title"><div class="dot" style="background:var(--accent3)"></div>Packet Rate Analysis</div></div>
+          <div class="panel-body" style="padding:12px"><canvas id="packetChart" height="140"></canvas></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title"><div class="dot" style="background:var(--threat)"></div>Anomaly Scatter Plot</div></div>
+        <div class="panel-body" style="padding:12px"><canvas id="scatterChart" height="160"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════ -->
+  <!-- PAGE: TOPOLOGY                    -->
+  <!-- ══════════════════════════════════ -->
+  <div class="page" id="page-topology">
+    <div class="section-header">
+      <div class="section-title">🌐 SDN Network Topology</div>
+      <div class="section-sub">Live node-link network visualization · Attack propagation tracking</div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><div class="dot"></div>Network Graph</div>
+        <div class="panel-actions">
+          <button class="panel-btn">Force Layout</button>
+          <button class="panel-btn">Hierarchical</button>
+        </div>
+      </div>
+      <div class="panel-body" style="padding:0">
+        <svg id="topology-svg"></svg>
+      </div>
+    </div>
+    <div class="grid-3" style="margin-top:16px">
+      <div class="panel"><div class="panel-body" style="text-align:center;padding:16px">
+        <div style="font-size:28px;font-family:Orbitron,sans-serif;color:var(--text-bright)">24</div>
+        <div style="font-size:10px;color:var(--text-dim);margin-top:4px;letter-spacing:2px">TOTAL NODES</div>
+      </div></div>
+      <div class="panel"><div class="panel-body" style="text-align:center;padding:16px">
+        <div style="font-size:28px;font-family:Orbitron,sans-serif;color:var(--threat)">3</div>
+        <div style="font-size:10px;color:var(--text-dim);margin-top:4px;letter-spacing:2px">COMPROMISED</div>
+      </div></div>
+      <div class="panel"><div class="panel-body" style="text-align:center;padding:16px">
+        <div style="font-size:28px;font-family:Orbitron,sans-serif;color:var(--warn)">6</div>
+        <div style="font-size:10px;color:var(--text-dim);margin-top:4px;letter-spacing:2px">HIGH TRAFFIC</div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════ -->
+  <!-- PAGE: PIPELINE                    -->
+  <!-- ══════════════════════════════════ -->
+  <div class="page" id="page-pipeline">
+    <div class="section-header">
+      <div class="section-title">⚙️ Block-Defender 13-Module Pipeline</div>
+      <div class="section-sub">Click any module to explore its components, methods, and outputs</div>
+    </div>
+    <div class="pipeline-grid" id="pipeline-grid"></div>
+    <div class="module-detail" id="module-detail">
+      <div class="detail-title" id="detail-title"></div>
+      <div class="detail-grid">
+        <div class="detail-section">
+          <label>Input Data</label>
+          <div class="tags" id="detail-inputs"></div>
+        </div>
+        <div class="detail-section">
+          <label>Methods / Algorithms</label>
+          <div class="tags" id="detail-methods"></div>
+        </div>
+        <div class="detail-section">
+          <label>Output Artifacts</label>
+          <div class="tags" id="detail-outputs"></div>
+        </div>
+      </div>
+      <div style="margin-top:14px">
+        <canvas id="moduleChart" height="80"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════ -->
+  <!-- PAGE: IDS-IPS                     -->
+  <!-- ══════════════════════════════════ -->
+  <div class="page" id="page-idsips">
+    <div class="section-header">
+      <div class="section-title">🤖 IDS-IPS Orchestration Engine</div>
+      <div class="section-sub">SOAR-style Autonomous Defense Workflow</div>
+    </div>
+    <div class="grid-60-40">
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title"><div class="dot"></div>Automated Response Pipeline</div></div>
+        <div class="panel-body">
+          <div class="ips-flow">
+            <div class="flow-step">
+              <div class="flow-dot">📥</div>
+              <div class="flow-info">
+                <div class="flow-name">Incoming SDN Flow</div>
+                <div class="flow-desc">TII-SSRC packet capture · 5-tuple session reconstruction</div>
+                <span class="flow-badge" style="background:rgba(0,212,255,0.1);color:var(--accent)">1.2M flows/day</span>
+              </div>
+            </div>
+            <div class="flow-step">
+              <div class="flow-dot">🔍</div>
+              <div class="flow-info">
+                <div class="flow-name">Feature Extraction</div>
+                <div class="flow-desc">GraphSAGE · Node2Vec · Statistical Descriptors · Entropy</div>
+              </div>
+            </div>
+            <div class="flow-step">
+              <div class="flow-dot">🧠</div>
+              <div class="flow-info">
+                <div class="flow-name">Multi-Stage Anomaly Detection</div>
+                <div class="flow-desc">Deep Autoencoder → VAE → GNN+BiLSTM+Transformer</div>
+                <span class="flow-badge" style="background:rgba(16,185,129,0.1);color:var(--safe)">99.4% Accuracy</span>
+              </div>
+            </div>
+            <div class="flow-step">
+              <div class="flow-dot">⚖️</div>
+              <div class="flow-info">
+                <div class="flow-name">Risk Fusion & Scoring</div>
+                <div class="flow-desc">Adaptive Weighted Fusion · SHAP Explainability · Attention Maps</div>
+              </div>
+            </div>
+            <div class="flow-step">
+              <div class="flow-dot">⚡</div>
+              <div class="flow-info">
+                <div class="flow-name">IPS Mitigation Decision</div>
+                <div class="flow-desc">Game-theoretic Attacker-Defender Modeling · RL Policy</div>
+              </div>
+            </div>
+            <div class="flow-step">
+              <div class="flow-dot">🛡</div>
+              <div class="flow-info">
+                <div class="flow-name">Automated Response</div>
+                <div class="flow-desc">Drop Rule · Rate Limit · Quarantine VLAN · Honey-Switch · Sinkhole</div>
+                <span class="flow-badge" style="background:rgba(239,68,68,0.1);color:var(--threat)">AUTO-EXECUTED</span>
+              </div>
+            </div>
+            <div class="flow-step">
+              <div class="flow-dot">🔗</div>
+              <div class="flow-info">
+                <div class="flow-name">Blockchain Forensic Logging</div>
+                <div class="flow-desc">Smart-Contract · Immutable Ledger · Incident Provenance</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="panel">
+          <div class="panel-header"><div class="panel-title"><div class="dot" style="background:var(--threat)"></div>Response Actions</div></div>
+          <div class="panel-body" style="padding:12px">
+            <canvas id="responseChart" height="180"></canvas>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><div class="panel-title"><div class="dot" style="background:var(--accent3)"></div>Attack Types Handled</div></div>
+          <div class="panel-body" style="padding:12px">
+            <canvas id="attackTypesChart" height="140"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════ -->
+  <!-- PAGE: PERFORMANCE                 -->
+  <!-- ══════════════════════════════════ -->
+  <div class="page" id="page-performance">
+    <div class="section-header">
+      <div class="section-title">📈 Model Performance Analytics</div>
+      <div class="section-sub">Multi-Model Comparison · Classification Metrics · ROC Analysis</div>
+    </div>
+    <div class="stats-grid" style="grid-template-columns:repeat(4,1fr)">
+      <div class="stat-card safe"><div class="stat-label">Accuracy</div><div class="stat-value">99.4<span class="stat-unit">%</span></div></div>
+      <div class="stat-card safe"><div class="stat-label">F1 Score</div><div class="stat-value">0.993</div></div>
+      <div class="stat-card warn"><div class="stat-label">False Pos Rate</div><div class="stat-value">0.6<span class="stat-unit">%</span></div></div>
+      <div class="stat-card purple"><div class="stat-label">AUC-ROC</div><div class="stat-value">0.998</div></div>
+    </div>
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-header"><div class="panel-title"><div class="dot"></div>Classification Metrics Breakdown</div></div>
+      <div class="panel-body">
+        <div id="metrics-list"></div>
+      </div>
+    </div>
+    <div class="grid-3">
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title"><div class="dot"></div>ROC Curve</div></div>
+        <div class="panel-body" style="padding:12px"><canvas id="rocChart" height="180"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title"><div class="dot" style="background:var(--accent3)"></div>Confusion Matrix</div></div>
+        <div class="panel-body" style="padding:12px"><canvas id="confusionChart" height="180"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title"><div class="dot" style="background:var(--warn)"></div>Model Comparison</div></div>
+        <div class="panel-body" style="padding:12px"><canvas id="modelCompChart" height="180"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════ -->
+  <!-- PAGE: BLOCKCHAIN                  -->
+  <!-- ══════════════════════════════════ -->
+  <div class="page" id="page-blockchain">
+    <div class="section-header">
+      <div class="section-title">🔗 Blockchain Forensic Ledger</div>
+      <div class="section-sub">Smart-Contract Incident Logging · Immutable Audit Trail</div>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card safe"><div class="stat-label">Total Blocks</div><div class="stat-value">1,847</div></div>
+      <div class="stat-card threat"><div class="stat-label">Attack Events</div><div class="stat-value">247</div></div>
+      <div class="stat-card purple"><div class="stat-label">Chain Integrity</div><div class="stat-value">100<span class="stat-unit">%</span></div></div>
+      <div class="stat-card warn"><div class="stat-label">Last Block</div><div class="stat-value">#1847</div></div>
+    </div>
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-header"><div class="panel-title"><div class="dot"></div>Recent Blockchain Events</div></div>
+      <div class="panel-body" style="padding:0; overflow:hidden">
+        <div class="blockchain-flow" style="padding:20px;gap:36px" id="blockchain-flow"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><div class="panel-title"><div class="dot" style="background:var(--accent3)"></div>Security Ledger</div></div>
+      <div class="panel-body" style="padding:0">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Block #</th><th>Timestamp</th><th>Incident ID</th>
+              <th>Attack Type</th><th>Response</th><th>Hash</th>
+            </tr>
+          </thead>
+          <tbody id="blockchain-table"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════ -->
+  <!-- PAGE: INCIDENTS                   -->
+  <!-- ══════════════════════════════════ -->
+  <div class="page" id="page-incidents">
+    <div class="section-header">
+      <div class="section-title">🚨 Incident Management</div>
+      <div class="section-sub">Active threats · Investigation queue · Response tracking</div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><div class="dot" style="background:var(--threat)"></div>Active Incidents (7)</div>
+        <div class="panel-actions"><button class="panel-btn">Export</button><button class="panel-btn">Filter</button></div>
+      </div>
+      <div class="panel-body" style="padding:0">
+        <table class="data-table">
+          <thead><tr><th>ID</th><th>Time</th><th>Source IP</th><th>Attack Type</th><th>Severity</th><th>Status</th><th>Module</th></tr></thead>
+          <tbody id="incident-table"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════ -->
+  <!-- PAGE: DOWNLOADS                   -->
+  <!-- ══════════════════════════════════ -->
+  <div class="page" id="page-downloads">
+    <div class="section-header">
+      <div class="section-title">📁 Research Download Center</div>
+      <div class="section-sub">Block-Defender Research Artifacts · Datasets · Reports</div>
+    </div>
+    <div class="download-grid">
+      <div class="dl-card">
+        <div class="dl-icon">📊</div>
+        <div class="dl-name">Research Presentation</div>
+        <div class="dl-desc">Complete 13-module Block-Defender PPT with visualizations</div>
+        <div class="dl-btn">⬇ Download PPT</div>
+      </div>
+      <div class="dl-card">
+        <div class="dl-icon">🧪</div>
+        <div class="dl-name">TII-SSRC Notebook</div>
+        <div class="dl-desc">Jupyter notebook with full pipeline implementation</div>
+        <div class="dl-btn">⬇ Download .ipynb</div>
+      </div>
+      <div class="dl-card">
+        <div class="dl-icon">📋</div>
+        <div class="dl-name">Research Summary</div>
+        <div class="dl-desc">Executive overview of findings and methodology</div>
+        <div class="dl-btn">⬇ Download PDF</div>
+      </div>
+      <div class="dl-card">
+        <div class="dl-icon">📐</div>
+        <div class="dl-name">Architecture Diagram</div>
+        <div class="dl-desc">13-module pipeline flowchart (PNG + SVG)</div>
+        <div class="dl-btn">⬇ Download Image</div>
+      </div>
+      <div class="dl-card">
+        <div class="dl-icon">📈</div>
+        <div class="dl-name">Performance Metrics</div>
+        <div class="dl-desc">Full benchmark results · Confusion matrices · ROC curves</div>
+        <div class="dl-btn">⬇ Download CSV</div>
+      </div>
+      <div class="dl-card">
+        <div class="dl-icon">🔗</div>
+        <div class="dl-name">Blockchain Logs</div>
+        <div class="dl-desc">Sample smart-contract incident logs in JSON</div>
+        <div class="dl-btn">⬇ Download JSON</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════ -->
+  <!-- PAGE: ABOUT                       -->
+  <!-- ══════════════════════════════════ -->
+  <div class="page" id="page-about">
+    <div class="section-header">
+      <div class="section-title">👤 Author Profile</div>
+      <div class="section-sub">Block-Defender Research Team</div>
+    </div>
+    <div class="author-card">
+      <div class="author-avatar">👩‍💻</div>
+      <div style="flex:1">
+        <div class="author-name">Prathiba P</div>
+        <div class="author-title">M.E. Computer Science Engineering</div>
+        <div class="author-inst">Anna University – College of Engineering, Guindy (CEG)</div>
+        <div style="font-size:11px;color:var(--text-dim);margin-top:8px;max-width:600px;line-height:1.7">
+          Researcher specializing in AI-driven cybersecurity, Software-Defined Networking (SDN), 
+          and privacy-preserving threat detection. Block-Defender integrates multi-modal deep learning 
+          with blockchain forensics for autonomous IDS/IPS in SDN environments.
+        </div>
+        <div class="author-links">
+          <a class="author-link" href="https://www.linkedin.com/in/prathiba-p-50a948222" target="_blank">
+            🔗 LinkedIn
+          </a>
+          <a class="author-link" href="https://github.com/PrathibaP" target="_blank">
+            🐙 GitHub
+          </a>
+          <a class="author-link" href="https://prathibapanaromicportfolio.base44.app/" target="_blank">
+            🌐 Portfolio
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:24px">
+      <div class="section-title" style="font-size:15px;margin-bottom:16px">📖 Research Overview</div>
+      <div class="grid-3">
+        <div class="panel">
+          <div class="panel-body" style="padding:18px">
+            <div style="font-size:20px;margin-bottom:10px">🔬</div>
+            <div style="font-family:Rajdhani,sans-serif;font-size:14px;font-weight:600;color:var(--text-bright);margin-bottom:6px">Dataset</div>
+            <div style="font-size:11px;color:var(--text-dim);line-height:1.6">TII-SSRC-23 · SDN-specific traffic · Multi-class attack scenarios</div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-body" style="padding:18px">
+            <div style="font-size:20px;margin-bottom:10px">🧠</div>
+            <div style="font-family:Rajdhani,sans-serif;font-size:14px;font-weight:600;color:var(--text-bright);margin-bottom:6px">Architecture</div>
+            <div style="font-size:11px;color:var(--text-dim);line-height:1.6">GNN + BiLSTM + Transformer · Deep Autoencoder · VAE · Meta-Learning</div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-body" style="padding:18px">
+            <div style="font-size:20px;margin-bottom:10px">🏆</div>
+            <div style="font-family:Rajdhani,sans-serif;font-size:14px;font-weight:600;color:var(--text-bright);margin-bottom:6px">Results</div>
+            <div style="font-size:11px;color:var(--text-dim);line-height:1.6">99.4% Accuracy · 0.998 AUC-ROC · Autonomous Mitigation</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════ -->
+  <!-- PAGE: CONTACT                     -->
+  <!-- ══════════════════════════════════ -->
+  <div class="page" id="page-contact">
+    <div class="section-header">
+      <div class="section-title">✉️ Research Collaboration</div>
+      <div class="section-sub">Contact for academic collaboration, dataset access, or project inquiries</div>
+    </div>
+    <div class="grid-60-40">
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title"><div class="dot"></div>Send Message</div></div>
+        <div class="panel-body">
+          <div class="contact-form">
+            <div class="form-group">
+              <label>Full Name</label>
+              <input class="form-input" type="text" placeholder="Dr. Jane Smith">
+            </div>
+            <div class="form-group">
+              <label>Email Address</label>
+              <input class="form-input" type="email" placeholder="researcher@university.edu">
+            </div>
+            <div class="form-group">
+              <label>Institution</label>
+              <input class="form-input" type="text" placeholder="MIT / IIT / Stanford...">
+            </div>
+            <div class="form-group">
+              <label>Message</label>
+              <textarea class="form-input" placeholder="I'm interested in collaborating on..."></textarea>
+            </div>
+            <button class="submit-btn" onclick="submitContact()">SEND COLLABORATION REQUEST</button>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="panel">
+          <div class="panel-body" style="padding:20px">
+            <div style="font-size:10px;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;margin-bottom:12px">Research Interests</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">
+              <span class="tag">SDN Security</span>
+              <span class="tag">Deep Learning IDS</span>
+              <span class="tag purple">Blockchain Forensics</span>
+              <span class="tag green">Privacy-Preserving AI</span>
+              <span class="tag">Graph Neural Networks</span>
+              <span class="tag purple">Adversarial ML</span>
+              <span class="tag green">SOAR Automation</span>
+              <span class="tag">Zero-Day Detection</span>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-body" style="padding:20px">
+            <div style="font-size:10px;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px">Project Status</div>
+            <div style="font-size:12px;color:var(--text-dim);line-height:2">
+              Phase <span style="color:var(--accent)">2</span> · Active Research<br>
+              TII-SSRC Dataset · <span style="color:var(--safe)">Validated</span><br>
+              Publication · <span style="color:var(--warn)">In Progress</span><br>
+              Open Source · <span style="color:var(--accent)">Planned</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+</div><!-- /app -->
+
+<script>
+// ══ CLOCK ══
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent = now.toTimeString().slice(0,8) + ' UTC';
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ══ NAVIGATION ══
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  event && event.currentTarget && event.currentTarget.classList.add('active');
+  // Lazy-init charts on first visit
+  if (id === 'topology' && !window.topoInit) { initTopology(); window.topoInit = true; }
+  if (id === 'analytics' && !window.analyticsInit) { initAnalyticsCharts(); window.analyticsInit = true; }
+  if (id === 'performance' && !window.perfInit) { initPerformanceCharts(); window.perfInit = true; }
+  if (id === 'blockchain' && !window.bcInit) { initBlockchain(); window.bcInit = true; }
+  if (id === 'incidents' && !window.incInit) { initIncidents(); window.incInit = true; }
+}
+
+// ══ CHART COLORS ══
+const C = {
+  accent: 'rgba(0,212,255,',
+  threat: 'rgba(239,68,68,',
+  safe: 'rgba(16,185,129,',
+  warn: 'rgba(245,158,11,',
+  purple: 'rgba(168,85,247,',
+};
+function ca(k,a) { return C[k]+a+')'; }
+const gridColor = 'rgba(255,255,255,0.04)';
+const tickColor = '#4a5568';
+const baseOpts = {
+  responsive: true,
+  plugins: { legend: { labels: { color: '#64748b', font: { size: 10 } } } },
+  scales: {
+    x: { grid: { color: gridColor }, ticks: { color: tickColor, font: { size: 9 } } },
+    y: { grid: { color: gridColor }, ticks: { color: tickColor, font: { size: 9 } } }
+  }
+};
+
+// ══ DASHBOARD CHARTS ══
+function initDashboardCharts() {
+  // Traffic Chart
+  const hrs = Array.from({length:24},(_,i)=>`${i}:00`);
+  new Chart(document.getElementById('trafficChart'), {
+    type: 'line',
+    data: {
+      labels: hrs,
+      datasets: [
+        { label: 'Normal', data: hrs.map(()=>Math.floor(2000+Math.random()*3000)), fill: true,
+          backgroundColor: ca('accent',0.05), borderColor: ca('accent',0.8), borderWidth: 1.5, pointRadius: 0, tension: 0.4 },
+        { label: 'Malicious', data: hrs.map(()=>Math.floor(50+Math.random()*400)), fill: true,
+          backgroundColor: ca('threat',0.15), borderColor: ca('threat',0.9), borderWidth: 1.5, pointRadius: 0, tension: 0.4 },
+        { label: 'Anomalous', data: hrs.map(()=>Math.floor(20+Math.random()*200)), fill: true,
+          backgroundColor: ca('warn',0.1), borderColor: ca('warn',0.8), borderWidth: 1.5, pointRadius: 0, tension: 0.4 }
+      ]
+    },
+    options: { ...baseOpts, plugins: { ...baseOpts.plugins } }
+  });
+
+  // Attack Distribution Doughnut
+  new Chart(document.getElementById('attackChart'), {
+    type: 'doughnut',
+    data: {
+      labels: ['DDoS','Port Scan','Brute Force','MITM','Fuzzing','Normal'],
+      datasets: [{ data: [38,22,15,12,8,5],
+        backgroundColor: [ca('threat',0.8),ca('warn',0.8),ca('purple',0.8),ca('accent',0.7),ca('safe',0.6),'rgba(100,116,139,0.4)'],
+        borderWidth: 0, hoverOffset: 6 }]
+    },
+    options: { responsive: true, plugins: { legend: { position: 'right', labels: { color: '#64748b', font: { size: 9 }, padding: 8, boxWidth: 10 } } }, cutout: '65%' }
+  });
+
+  // Anomaly Chart
+  const anomLabels = Array.from({length:60},(_,i)=>i);
+  new Chart(document.getElementById('anomalyChart'), {
+    type: 'bar',
+    data: {
+      labels: anomLabels,
+      datasets: [
+        { label: 'Anomaly Score', data: anomLabels.map(()=>Math.random()*100),
+          backgroundColor: anomLabels.map(()=>Math.random()>0.85?ca('threat',0.8):ca('accent',0.3)),
+          borderRadius: 2, borderWidth: 0 }
+      ]
+    },
+    options: { ...baseOpts, plugins: { legend: { display: false } }, scales: {
+      x: { display: false }, y: { grid: { color: gridColor }, ticks: { color: tickColor, font: { size: 9 } } } } }
+  });
+
+  // Heatmap (simulated with bar)
+  const protocols = ['TCP','UDP','ICMP','HTTP','SSH','FTP','DNS','TLS'];
+  new Chart(document.getElementById('heatmapChart'), {
+    type: 'bar',
+    data: {
+      labels: protocols,
+      datasets: [
+        { label: 'Benign', data: [4200,3100,890,2200,450,190,1100,2800], backgroundColor: ca('safe',0.6), borderRadius: 4 },
+        { label: 'Attack', data: [1200,800,400,600,900,300,200,400], backgroundColor: ca('threat',0.7), borderRadius: 4 }
+      ]
+    },
+    options: { ...baseOpts, scales: {
+      x: { grid: { display:false }, ticks: { color: tickColor, font: { size: 9 } } },
+      y: { stacked: false, grid: { color: gridColor }, ticks: { color: tickColor, font: { size: 9 } } } } }
+  });
+
+  // Gauge (doughnut half)
+  drawGauge();
+}
+
+function drawGauge() {
+  const ctx = document.getElementById('gaugeChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      datasets: [{
+        data: [68, 32],
+        backgroundColor: ['rgba(245,158,11,0.85)', 'rgba(255,255,255,0.04)'],
+        borderWidth: 0, circumference: 180, rotation: 270
+      }]
+    },
+    options: { responsive: false, cutout: '75%', plugins: { legend: { display: false }, tooltip: { enabled: false } } }
+  });
+}
+
+// ══ ALERT FEED ══
+const alertMessages = [
+  { type: 'critical', msg: 'DDoS attack detected · Src 192.168.47.12 · 8,200 pps', time: 'now' },
+  { type: 'warning', msg: 'Port scan from 10.0.2.45 → 254 targets · Isolation Forest flag', time: '1m ago' },
+  { type: 'critical', msg: 'Brute Force SSH · 5 failed logins · Rate limiting applied', time: '2m ago' },
+  { type: 'info', msg: 'Module 4 (BiLSTM) confidence score updated: 0.994', time: '3m ago' },
+  { type: 'safe', msg: 'IPS mitigation complete · Flow 0xA8F2C91 quarantined to VLAN 99', time: '4m ago' },
+  { type: 'warning', msg: 'SMOTE-NC class imbalance detected in training batch', time: '6m ago' },
+  { type: 'info', msg: 'Blockchain block #1847 committed · Hash: 3a7f9c2e...', time: '7m ago' },
+  { type: 'critical', msg: 'MITM attempt · ARP spoofing · Sinkhole routing engaged', time: '9m ago' },
+  { type: 'safe', msg: 'Model drift detected · ADWIN triggered incremental retraining', time: '11m ago' },
+  { type: 'info', msg: 'Threat Intelligence update · 14 new CVEs ingested from CTI feed', time: '13m ago' },
+];
+
+function renderAlerts() {
+  const feed = document.getElementById('alert-feed');
+  feed.innerHTML = '';
+  alertMessages.forEach(a => {
+    const el = document.createElement('div');
+    el.className = `alert-item ${a.type}`;
+    el.innerHTML = `<span class="alert-type">${a.type.toUpperCase()}</span><span class="alert-msg">${a.msg}</span><span class="alert-time">${a.time}</span>`;
+    feed.appendChild(el);
+  });
+}
+function clearAlerts() { document.getElementById('alert-feed').innerHTML = '<div style="font-size:11px;color:var(--text-dim);padding:20px;text-align:center">No active alerts</div>'; }
+
+// Animate live alerts
+let alertIdx = 0;
+function pushAlert() {
+  const feed = document.getElementById('alert-feed');
+  const times = ['just now','30s ago','1m ago'];
+  const a = alertMessages[alertIdx % alertMessages.length];
+  const el = document.createElement('div');
+  el.className = `alert-item ${a.type}`;
+  el.innerHTML = `<span class="alert-type">${a.type.toUpperCase()}</span><span class="alert-msg">${a.msg}</span><span class="alert-time">${times[Math.floor(Math.random()*3)]}</span>`;
+  feed.insertBefore(el, feed.firstChild);
+  if (feed.children.length > 12) feed.removeChild(feed.lastChild);
+  alertIdx++;
+}
+setInterval(pushAlert, 5000);
+
+// ══ PIPELINE DATA ══
+const modules = [
+  { num:'01', icon:'📥', name:'Data Acquisition & Streaming', techs:'TII-SSRC Loader · Session Reconstruction · 5-Tuple',
+    inputs:['Raw PCAP','SDN Flows','5-Tuples'], methods:['Session Recon','Flow Aggregation','Streaming'], outputs:['Flow Records','Session Tables'], color:'accent' },
+  { num:'02', icon:'⚗️', name:'Pre-Processing & Quality Control', techs:'KNN-Imputation · Isolation Forest · RobustScaler · SMOTE-NC',
+    inputs:['Raw Flows','Missing Data'], methods:['KNN Imputation','Isolation Forest','RobustScaler','SMOTE-NC + Tomek'], outputs:['Clean Dataset','Balanced Classes'], color:'safe' },
+  { num:'03', icon:'🔧', name:'Feature Engineering Layer', techs:'GraphSAGE · Node2Vec · Statistical Descriptors · Entropy',
+    inputs:['Clean Flows','Graph Data'], methods:['Node2Vec','GraphSAGE','Entropy Calc','Path Centrality'], outputs:['Feature Vectors','Embeddings'], color:'purple' },
+  { num:'04', icon:'🧠', name:'Multi-Stage IDS Detection', techs:'Deep Autoencoder · VAE · GNN+BiLSTM+Transformer · MetaLearning',
+    inputs:['Feature Vectors','Embeddings'], methods:['Autoencoder','VAE','GNN+BiLSTM','Transformer','MAML/ProtoNet'], outputs:['Anomaly Scores','Class Labels'], color:'threat' },
+  { num:'05', icon:'⚖️', name:'Fusion, Risk Scoring & Explainability', techs:'Adaptive Weighted Fusion · Temporal Voting · SHAP · LIME',
+    inputs:['Multi-model Scores'], methods:['Adaptive Fusion','Temporal Voting','SHAP Analysis','Attention Maps'], outputs:['Risk Score','SHAP Values','Heatmaps'], color:'warn' },
+  { num:'06', icon:'⚡', name:'IPS Mitigation & Response', techs:'Drop Rules · Rate Limiting · Quarantine VLAN · Honey-Switch',
+    inputs:['Risk Score','Attack Class'], methods:['Dynamic Drop','Rate Limiting','VLAN Isolation','Sinkhole','HoneySwitch'], outputs:['Mitigation Action','Policy Update'], color:'threat' },
+  { num:'07', icon:'🔗', name:'Blockchain Logging & Forensics', techs:'Smart-Contract · Immutable Ledger · Incident Provenance',
+    inputs:['Incident Data','Mitigation Logs'], methods:['Smart Contracts','Hash Chain','Merkle Tree'], outputs:['Block Hash','Audit Log','Provenance Record'], color:'accent' },
+  { num:'08', icon:'🔐', name:'Privacy-Preserving Protection', techs:'SHA-256 IP Hashing · AES Encryption · Controlled Decryption',
+    inputs:['Raw IP Addresses','Packet Headers'], methods:['SHA-256 Hashing','AES Encryption','Audit-Controlled Decrypt'], outputs:['Anonymized IPs','Encrypted Records'], color:'purple' },
+  { num:'09', icon:'🔄', name:'Continuous Learning & Hardening', techs:'ADWIN/DDM Drift Detection · FGSM/PGD Defense · Online Learning',
+    inputs:['New Traffic','Model State'], methods:['ADWIN Drift','Online Inc. Learning','FGSM Adversarial','PGD Defense','Scheduled Retrain'], outputs:['Updated Model','Drift Report'], color:'safe' },
+  { num:'10', icon:'🔁', name:'Feedback Loops & Adaptive Control', techs:'Drift-triggered Updates · Analyst Feedback · Confidence Recalibration',
+    inputs:['Analyst Feedback','Drift Signals'], methods:['Drift-triggered Updates','Adversarial Weakness Detection','Model Versioning'], outputs:['Policy Updates','Audit Logs','Calibrated Thresholds'], color:'warn' },
+  { num:'11', icon:'🌐', name:'Autonomous Threat Intelligence', techs:'External CTI Ingestion · Campaign Analysis · SDN Digital Twin',
+    inputs:['CTI Feeds','SDN State'], methods:['CTI Correlation','Campaign Analysis','Digital Twin Modeling','Attack Replay'], outputs:['Threat Intel Report','Attack Simulation'], color:'accent' },
+  { num:'12', icon:'♟️', name:'Self-Adaptive Policy Optimization', techs:'Game-theoretic Modeling · Reinforcement Learning · Payoff Matrix',
+    inputs:['Attack Patterns','Defense State'], methods:['Attacker-Defender Game','RL Policy','Payoff Matrix','Adaptive Selection'], outputs:['Optimal Policy','Payoff Matrix','RL Model'], color:'purple' },
+  { num:'13', icon:'📊', name:'Final Performance Evaluation', techs:'Accuracy · Precision · Recall · F1 · AUC-ROC · Confusion Matrix',
+    inputs:['All Module Outputs'], methods:['Classification Metrics','Confusion Matrix','ROC/PR Curves','Robustness Analysis'], outputs:['Benchmark Report','Visual Analytics','End-to-End Eval'], color:'safe' },
+];
+
+function initPipeline() {
+  const grid = document.getElementById('pipeline-grid');
+  modules.forEach((m,i) => {
+    const card = document.createElement('div');
+    card.className = 'module-card';
+    card.innerHTML = `
+      <div class="module-status"></div>
+      <div class="module-icon">${m.icon}</div>
+      <div class="module-num">MODULE ${m.num}</div>
+      <div class="module-name">${m.name}</div>
+      <div class="module-tech">${m.techs}</div>`;
+    card.onclick = () => showModule(i, card);
+    grid.appendChild(card);
+  });
+}
+
+let moduleChart = null;
+function showModule(i, card) {
+  document.querySelectorAll('.module-card').forEach(c => c.classList.remove('active'));
+  card.classList.add('active');
+  const m = modules[i];
+  const detail = document.getElementById('module-detail');
+  detail.classList.add('active');
+  document.getElementById('detail-title').textContent = `Module ${m.num} · ${m.name}`;
+  document.getElementById('detail-inputs').innerHTML = m.inputs.map(t=>`<span class="tag">${t}</span>`).join('');
+  document.getElementById('detail-methods').innerHTML = m.methods.map(t=>`<span class="tag purple">${t}</span>`).join('');
+  document.getElementById('detail-outputs').innerHTML = m.outputs.map(t=>`<span class="tag green">${t}</span>`).join('');
+  // Module sparkline
+  if (moduleChart) moduleChart.destroy();
+  const data = Array.from({length:20},()=>Math.random()*100);
+  moduleChart = new Chart(document.getElementById('moduleChart'), {
+    type: 'line',
+    data: {
+      labels: data.map((_,j)=>j),
+      datasets: [{ data, label: 'Processing Load',
+        borderColor: ca('accent',0.8), backgroundColor: ca('accent',0.05),
+        fill: true, pointRadius: 0, tension: 0.4, borderWidth: 1.5 }]
+    },
+    options: { ...baseOpts, plugins: { legend: { display: false } }, scales: {
+      x: { display: false }, y: { grid: { color: gridColor }, ticks: { color: tickColor, font: { size: 9 } } } } }
+  });
+  detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// ══ TOPOLOGY (D3) ══
+function initTopology() {
+  const svg = d3.select('#topology-svg');
+  const W = document.getElementById('topology-svg').clientWidth || 800;
+  const H = 400;
+  svg.attr('viewBox', `0 0 ${W} ${H}`);
+
+  const nodeTypes = [
+    { id:'ctrl', label:'SDN Controller', type:'controller', x:W/2, y:60 },
+    ...Array.from({length:6},(_,i)=>({ id:`sw${i}`, label:`Switch ${i+1}`, type:'switch', x:0, y:0 })),
+    ...Array.from({length:12},(_,i)=>({ id:`h${i}`, label:`Host ${i+1}`, type: i<3?'attacked':'host', x:0, y:0 })),
+    { id:'ext1', label:'External', type:'external', x:0, y:0 },
+    { id:'ext2', label:'Attacker', type:'attacker', x:0, y:0 },
+    { id:'fw', label:'Firewall', type:'firewall', x:W/2, y:H-60 },
+  ];
+
+  const links = [
+    {s:'ctrl',t:'sw0'},{s:'ctrl',t:'sw1'},{s:'ctrl',t:'sw2'},
+    {s:'ctrl',t:'sw3'},{s:'ctrl',t:'sw4'},{s:'ctrl',t:'sw5'},
+    {s:'sw0',t:'h0'},{s:'sw0',t:'h1'},{s:'sw1',t:'h2'},{s:'sw1',t:'h3'},
+    {s:'sw2',t:'h4'},{s:'sw2',t:'h5'},{s:'sw3',t:'h6'},{s:'sw3',t:'h7'},
+    {s:'sw4',t:'h8'},{s:'sw4',t:'h9'},{s:'sw5',t:'h10'},{s:'sw5',t:'h11'},
+    {s:'ext1',t:'sw2'},{s:'ext2',t:'sw0'},{s:'fw',t:'sw3'},{s:'fw',t:'sw5'},
+  ];
+
+  // Position switches
+  ['sw0','sw1','sw2','sw3','sw4','sw5'].forEach((id,i) => {
+    const n = nodeTypes.find(n=>n.id===id);
+    n.x = 80 + i*(W-160)/5; n.y = 190;
+  });
+  ['h0','h1','h2','h3','h4','h5','h6','h7','h8','h9','h10','h11'].forEach((id,i) => {
+    const n = nodeTypes.find(n=>n.id===id);
+    n.x = 80 + Math.floor(i/2)*(W-160)/5 + (i%2?30:-30); n.y = 320;
+  });
+  const extNodes = nodeTypes.filter(n=>['ext1','ext2'].includes(n.id));
+  extNodes[0].x=20; extNodes[0].y=190;
+  extNodes[1].x=W-20; extNodes[1].y=190;
+
+  const nodeMap = {};
+  nodeTypes.forEach(n => nodeMap[n.id]=n);
+
+  const colors = { controller:'#00d4ff', switch:'#a855f7', host:'#10b981', attacked:'#ef4444', external:'#f59e0b', attacker:'#ef4444', firewall:'#22c55e' };
+
+  // Draw links
+  svg.selectAll('line').data(links).enter().append('line')
+    .attr('x1',d=>nodeMap[d.s].x).attr('y1',d=>nodeMap[d.s].y)
+    .attr('x2',d=>nodeMap[d.t].x).attr('y2',d=>nodeMap[d.t].y)
+    .attr('stroke','rgba(0,212,255,0.15)').attr('stroke-width',1);
+
+  // Draw nodes
+  const nodeG = svg.selectAll('g.node').data(nodeTypes).enter().append('g').attr('class','node')
+    .attr('transform',d=>`translate(${d.x},${d.y})`).style('cursor','pointer');
+
+  nodeG.append('circle').attr('r',d=>d.type==='controller'?20:d.type==='switch'?14:10)
+    .attr('fill',d=>`${colors[d.type]}22`).attr('stroke',d=>colors[d.type]).attr('stroke-width',1.5);
+
+  nodeG.append('text').text(d=>{
+    return d.type==='controller'?'⊕':d.type==='switch'?'◈':d.type==='attacker'?'☠':d.type==='firewall'?'🔥':'○';
+  }).attr('text-anchor','middle').attr('dominant-baseline','middle').attr('fill',d=>colors[d.type]).attr('font-size',d=>d.type==='controller'?14:10);
+
+  nodeG.append('text').text(d=>d.label.length>8?d.label.slice(0,8)+'…':d.label)
+    .attr('text-anchor','middle').attr('y',d=>d.type==='controller'?28:20)
+    .attr('fill','#64748b').attr('font-size','7px').attr('font-family','JetBrains Mono,monospace');
+
+  // Animate packet
+  function animatePacket() {
+    const link = links[Math.floor(Math.random()*links.length)];
+    const s = nodeMap[link.s], t = nodeMap[link.t];
+    const pkt = svg.append('circle').attr('r',3).attr('fill','#00d4ff').attr('opacity',0.9);
+    pkt.attr('cx',s.x).attr('cy',s.y);
+    pkt.transition().duration(800).ease(d3.easeLinear).attr('cx',t.x).attr('cy',t.y).attr('opacity',0).remove();
+  }
+  setInterval(animatePacket, 400);
+}
+
+// ══ ANALYTICS CHARTS ══
+function initAnalyticsCharts() {
+  // Entropy
+  new Chart(document.getElementById('entropyChart'), {
+    type: 'line',
+    data: { labels: Array.from({length:50},(_,i)=>i),
+      datasets: [{ label:'Shannon Entropy', data: Array.from({length:50},()=>Math.random()*4+3),
+        borderColor: ca('accent',0.8), backgroundColor: ca('accent',0.05), fill:true, pointRadius:0, tension:0.4 }] },
+    options: baseOpts
+  });
+  // Packet rate
+  new Chart(document.getElementById('packetChart'), {
+    type: 'bar',
+    data: { labels: Array.from({length:20},(_,i)=>i*5+'s'),
+      datasets: [{ label:'Packets/s', data: Array.from({length:20},()=>Math.floor(100+Math.random()*5000)),
+        backgroundColor: ca('purple',0.6), borderRadius:3 }] },
+    options: baseOpts
+  });
+  // Scatter
+  new Chart(document.getElementById('scatterChart'), {
+    type: 'scatter',
+    data: {
+      datasets: [
+        { label:'Normal', data: Array.from({length:200},()=>({x:Math.random()*10, y:Math.random()*5})), backgroundColor: ca('safe',0.4), pointRadius:3 },
+        { label:'Anomalous', data: Array.from({length:30},()=>({x:Math.random()*10+5, y:Math.random()*10+5})), backgroundColor: ca('threat',0.7), pointRadius:5 },
+      ]
+    },
+    options: { ...baseOpts, scales: {
+      x: { title:{display:true,text:'Feature A',color:'#4a5568',font:{size:9}}, grid:{color:gridColor}, ticks:{color:tickColor,font:{size:9}} },
+      y: { title:{display:true,text:'Feature B',color:'#4a5568',font:{size:9}}, grid:{color:gridColor}, ticks:{color:tickColor,font:{size:9}} } } }
+  });
+}
+
+// ══ PERFORMANCE CHARTS ══
+function initPerformanceCharts() {
+  // Metrics list
+  const metrics = [
+    { name:'Accuracy', val:99.4, bar:'safe' },
+    { name:'Precision', val:99.1, bar:'safe' },
+    { name:'Recall', val:99.6, bar:'safe' },
+    { name:'F1 Score', val:99.3, bar:'safe' },
+    { name:'AUC-ROC', val:99.8, bar:'accent' },
+    { name:'False Pos Rate', val:0.6, bar:'threat' },
+    { name:'False Neg Rate', val:0.4, bar:'threat' },
+    { name:'Threat Severity Idx', val:87.4, bar:'warn' },
+  ];
+  const barColors = { safe: 'var(--safe)', accent: 'var(--accent)', threat: 'var(--threat)', warn: 'var(--warn)' };
+  const ml = document.getElementById('metrics-list');
+  metrics.forEach(m => {
+    const v = m.name.includes('Rate')||m.name.includes('Neg')?m.val:m.val;
+    const pct = m.name.includes('Rate')||m.name.includes('Neg')?m.val:m.val;
+    ml.innerHTML += `<div class="metric-row">
+      <div class="metric-name">${m.name}</div>
+      <div class="metric-bar-wrap"><div class="metric-bar" style="width:${pct}%;background:${barColors[m.bar]}"></div></div>
+      <div class="metric-val">${m.val}${m.name.includes('Score')||m.name.includes('Idx')||m.name.includes('AUC')?'':m.val>10?'%':''}</div>
+    </div>`;
+  });
+
+  // ROC curve
+  const fprs = Array.from({length:20},(_,i)=>i/20);
+  new Chart(document.getElementById('rocChart'), {
+    type: 'line',
+    data: {
+      labels: fprs.map(f=>f.toFixed(2)),
+      datasets: [
+        { label:'Block-Defender (0.998)', data: fprs.map(f=>Math.pow(1-(1-f),0.15)), borderColor:ca('accent',0.9), borderWidth:2, pointRadius:0, fill:false, tension:0.4 },
+        { label:'Random (0.500)', data: fprs, borderColor:'rgba(100,116,139,0.4)', borderDash:[4,4], borderWidth:1, pointRadius:0, fill:false },
+      ]
+    },
+    options: { ...baseOpts, scales: {
+      x:{grid:{color:gridColor},ticks:{color:tickColor,font:{size:8}},title:{display:true,text:'FPR',color:'#4a5568',font:{size:9}}},
+      y:{grid:{color:gridColor},ticks:{color:tickColor,font:{size:8}},title:{display:true,text:'TPR',color:'#4a5568',font:{size:9}}} } }
+  });
+
+  // Confusion matrix (heatmap via bar chart)
+  new Chart(document.getElementById('confusionChart'), {
+    type: 'bar',
+    data: {
+      labels: ['DDoS','PortScan','Brute','MITM','Fuzz','Normal'],
+      datasets: [
+        { label:'TP', data:[2840,1620,1070,840,580,22400], backgroundColor:ca('safe',0.7), borderRadius:3 },
+        { label:'FP', data:[24,18,9,12,6,48], backgroundColor:ca('threat',0.6), borderRadius:3 },
+      ]
+    },
+    options: { ...baseOpts, scales: {
+      x:{grid:{display:false},ticks:{color:tickColor,font:{size:8}}},
+      y:{grid:{color:gridColor},ticks:{color:tickColor,font:{size:8}}} } }
+  });
+
+  // Model comparison radar as bar
+  new Chart(document.getElementById('modelCompChart'), {
+    type: 'bar',
+    data: {
+      labels: ['Acc','Prec','Recall','F1','AUC'],
+      datasets: [
+        { label:'Block-Defender', data:[99.4,99.1,99.6,99.3,99.8], backgroundColor:ca('accent',0.7), borderRadius:3 },
+        { label:'Baseline CNN', data:[91.2,90.4,88.7,89.5,92.1], backgroundColor:ca('warn',0.5), borderRadius:3 },
+        { label:'Random Forest', data:[88.4,87.1,86.9,87.0,89.3], backgroundColor:ca('purple',0.5), borderRadius:3 },
+      ]
+    },
+    options: { ...baseOpts, scales: {
+      x:{grid:{display:false},ticks:{color:tickColor,font:{size:8}}},
+      y:{min:80,grid:{color:gridColor},ticks:{color:tickColor,font:{size:8}}} } }
+  });
+}
+
+// ══ IPS CHARTS ══
+function initIpsCharts() {
+  // Response actions
+  new Chart(document.getElementById('responseChart'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Drop Rule','Rate Limit','Quarantine VLAN','Honey-Switch','Sinkhole','Host Block'],
+      datasets: [{ data:[38,25,18,9,7,3],
+        backgroundColor:[ca('threat',0.8),ca('warn',0.8),ca('accent',0.7),ca('purple',0.8),ca('safe',0.6),'rgba(100,116,139,0.5)'],
+        borderWidth:0, hoverOffset:5 }]
+    },
+    options: { responsive:true, cutout:'60%', plugins:{legend:{position:'right',labels:{color:'#64748b',font:{size:9},padding:6,boxWidth:8}}} }
+  });
+
+  // Attack types
+  new Chart(document.getElementById('attackTypesChart'), {
+    type:'bar',
+    data:{
+      labels:['DDoS','Port Scan','Brute Force','MITM','Fuzzing'],
+      datasets:[{label:'Detected',data:[2864,1638,1079,852,586],backgroundColor:ca('threat',0.7),borderRadius:4}]
+    },
+    options:{...baseOpts,indexAxis:'y',plugins:{legend:{display:false}},scales:{
+      x:{grid:{color:gridColor},ticks:{color:tickColor,font:{size:9}}},
+      y:{grid:{display:false},ticks:{color:tickColor,font:{size:9}}}}}
+  });
+}
+
+// ══ BLOCKCHAIN ══
+function initBlockchain() {
+  const types = [
+    {type:'atk',label:'DDoS Detected'},
+    {type:'resp',label:'Rate Limit Applied'},
+    {type:'ok',label:'Flow Quarantined'},
+    {type:'atk',label:'Port Scan Alert'},
+    {type:'resp',label:'Drop Rule Pushed'},
+  ];
+  const flow = document.getElementById('blockchain-flow');
+  types.forEach((b,i) => {
+    const node = document.createElement('div');
+    node.className = 'block-node';
+    node.innerHTML = `
+      <div class="block-id">BLOCK #${1843+i}</div>
+      <div class="block-hash">${generateHash()}</div>
+      <span class="block-type ${b.type}">${b.label}</span>
+      <div style="font-size:9px;color:var(--text-dim);margin-top:6px">${new Date(Date.now()-i*300000).toLocaleTimeString()}</div>`;
+    flow.appendChild(node);
+  });
+
+  // Table
+  const tbody = document.getElementById('blockchain-table');
+  const attacks = ['DDoS','Port Scan','Brute Force','MITM','Fuzzing'];
+  const responses = ['Drop Rule','Rate Limit','Quarantine VLAN','Honey-Switch','Sinkhole'];
+  Array.from({length:12},(_,i)=>{
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td style="color:var(--accent)">#${1847-i}</td>
+      <td>${new Date(Date.now()-i*180000).toLocaleTimeString()}</td>
+      <td>INC-${String(2847-i).padStart(4,'0')}</td>
+      <td>${attacks[i%5]}</td>
+      <td><span class="severity-badge sev-${['critical','high','medium'][i%3]}">${responses[i%5]}</span></td>
+      <td style="font-family:JetBrains Mono;font-size:9px;color:var(--text-dim)">${generateHash().slice(0,16)}…</td>`;
+    tbody.appendChild(row);
+  });
+}
+
+function generateHash() {
+  return Array.from({length:16},()=>Math.floor(Math.random()*16).toString(16)).join('');
+}
+
+// ══ INCIDENTS ══
+function initIncidents() {
+  const tbody = document.getElementById('incident-table');
+  const attacks = ['DDoS Flood','Port Scan','SSH Brute Force','MITM ARP Spoof','HTTP Fuzzing','Lateral Movement','C2 Beacon'];
+  const severities = ['critical','high','high','medium','medium','high','critical'];
+  const statuses = ['⚡ Mitigating','🔍 Investigating','✅ Resolved','🔍 Investigating','⚡ Mitigating','✅ Resolved','⚡ Mitigating'];
+  const modules = ['Module 4','Module 5','Module 6','Module 4','Module 11','Module 9','Module 6'];
+  attacks.forEach((atk,i) => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td style="color:var(--accent);font-family:JetBrains Mono">INC-${2841+i}</td>
+      <td>${new Date(Date.now()-i*420000).toLocaleTimeString()}</td>
+      <td style="color:var(--text-dim)">192.168.${Math.floor(Math.random()*255)}.${Math.floor(Math.random()*255)}</td>
+      <td>${atk}</td>
+      <td><span class="severity-badge sev-${severities[i]}">${severities[i].toUpperCase()}</span></td>
+      <td>${statuses[i]}</td>
+      <td style="color:var(--text-dim);font-size:10px">${modules[i]}</td>`;
+    tbody.appendChild(row);
+  });
+}
+
+// ══ UPLOAD SIMULATION ══
+function simulateUpload() {
+  const result = document.getElementById('upload-result');
+  if (result.style.display === 'none') {
+    result.style.display = 'block';
+    result.style.animation = 'fadeIn 0.4s ease';
+    setTimeout(() => { if (!window.analyticsChartsInited) { initAnalyticsCharts(); window.analyticsChartsInited = true; } }, 100);
+  }
+}
+
+// ══ CONTACT ══
+function submitContact() {
+  alert('Thank you! Collaboration request sent to Prathiba P.\n\nExpect a response within 48 hours.');
+}
+
+// ══ INIT ══
+window.onload = function() {
+  initDashboardCharts();
+  renderAlerts();
+  initPipeline();
+  initIpsCharts();
+  // Animate stats
+  setTimeout(() => {
+    let n = 247;
+    setInterval(() => {
+      n += Math.floor(Math.random()*5)-2;
+      const el = document.getElementById('stat-threats');
+      if (el) el.innerHTML = n + '<span class="stat-unit">flows</span>';
+    }, 3000);
+  }, 1000);
+};
+</script>
+</body>
+</html>
